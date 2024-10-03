@@ -1,0 +1,86 @@
+import requests
+import sqlite3
+import pandas as pd
+import matplotlib.pyplot as plt
+import schedule
+import time
+from datetime import datetime
+
+API_KEY = "OpenWeathermap"
+LOCATION = "New York"
+URL = f"https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&exclude={part}&appid={API key}"
+
+conn = sqlite3.connect('weather_data.db')
+cursor = conn.cursor()
+
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS weather (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT,
+    temperature REAL,
+    humidity REAL,
+    wind_speed REAL
+)
+''')
+conn.commit()
+
+def fetch_weather_data():
+    response = requests.get(URL)
+    if response.status_code == 200:
+        data = response.json()
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        temperature = data['main']['temp']
+        humidity = data['main']['humidity']
+        wind_speed = data['wind']['speed']
+        cursor.execute('''
+        INSERT INTO weather (timestamp, temperature, humidity, wind_speed)
+        VALUES (?, ?, ?, ?)
+        ''', (timestamp, temperature, humidity, wind_speed))
+        conn.commit()
+        print(f"Weather data stored at {timestamp}")
+    else:
+        print("Failed to fetch weather data")
+
+schedule.every(1).hour.do(fetch_weather_data)
+
+def analyze_weather_data():
+    df = pd.read_sql_query("SELECT * FROM weather", conn)
+    
+    if not df.empty:
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        print("Summary Statistics:")
+        print(df.describe())
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(df['timestamp'], df['temperature'], label='Temperature (°C)', color='red')
+        plt.xlabel('Time')
+        plt.ylabel('Temperature (°C)')
+        plt.title(f'Temperature Trend in {LOCATION}')
+        plt.legend()
+        plt.grid(True)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(df['timestamp'], df['humidity'], label='Humidity (%)', color='blue')
+        plt.xlabel('Time')
+        plt.ylabel('Humidity (%)')
+        plt.title(f'Humidity Trend in {LOCATION}')
+        plt.legend()
+        plt.grid(True)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("No data available for analysis.")
+
+if __name__ == "__main__":
+    print("Starting Weather Data Aggregator and Analyzer...")
+    
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+        
+
+        # analyze_weather_data()
